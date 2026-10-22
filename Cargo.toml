@@ -13,3 +13,6 @@ crate-type = ["cdylib"]
 [dependencies]
 neon = { version = "1.1", features = ["napi-6"] }
 libc = "0.2"
+gbm = "0.18"
+khronos-egl = { version = "6", features = ["dynamic"] }
+glow = "0.16"

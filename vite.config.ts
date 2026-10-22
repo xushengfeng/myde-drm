@@ -16,7 +16,7 @@ export default defineConfig({
             fileName: (format) => (format === "es" ? "index.js" : "index.cjs"),
         },
         rollupOptions: {
-            external: ["node:module", /\.node$/],
+            external: [/^node:/, /\.node$/],
         },
     },
 });

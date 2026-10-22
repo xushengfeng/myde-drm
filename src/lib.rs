@@ -1,3 +1,5 @@
+mod gpu;
+
 use neon::prelude::*;
 use neon::types::buffer::TypedArray;
 use std::ffi::c_void;
@@ -8,17 +10,17 @@ const fn fourcc(a: u8, b: u8, c: u8, d: u8) -> u32 {
     (a as u32) | ((b as u32) << 8) | ((c as u32) << 16) | ((d as u32) << 24)
 }
 
-const DRM_FORMAT_ARGB8888: u32 = fourcc(b'A', b'R', b'2', b'4');
-const DRM_FORMAT_ABGR8888: u32 = fourcc(b'A', b'B', b'2', b'4');
-const DRM_FORMAT_RGBA8888: u32 = fourcc(b'R', b'A', b'2', b'4');
-const DRM_FORMAT_BGRA8888: u32 = fourcc(b'B', b'A', b'2', b'4');
-const DRM_FORMAT_XRGB8888: u32 = fourcc(b'X', b'R', b'2', b'4');
-const DRM_FORMAT_XBGR8888: u32 = fourcc(b'X', b'B', b'2', b'4');
-const DRM_FORMAT_RGBX8888: u32 = fourcc(b'R', b'X', b'2', b'4');
-const DRM_FORMAT_BGRX8888: u32 = fourcc(b'B', b'X', b'2', b'4');
-const DRM_FORMAT_NV12: u32 = fourcc(b'N', b'V', b'1', b'2');
-const DRM_FORMAT_NV16: u32 = fourcc(b'N', b'V', b'1', b'6');
-const DRM_FORMAT_P010: u32 = fourcc(b'P', b'0', b'1', b'0');
+pub(crate) const DRM_FORMAT_ARGB8888: u32 = fourcc(b'A', b'R', b'2', b'4');
+pub(crate) const DRM_FORMAT_ABGR8888: u32 = fourcc(b'A', b'B', b'2', b'4');
+pub(crate) const DRM_FORMAT_RGBA8888: u32 = fourcc(b'R', b'A', b'2', b'4');
+pub(crate) const DRM_FORMAT_BGRA8888: u32 = fourcc(b'B', b'A', b'2', b'4');
+pub(crate) const DRM_FORMAT_XRGB8888: u32 = fourcc(b'X', b'R', b'2', b'4');
+pub(crate) const DRM_FORMAT_XBGR8888: u32 = fourcc(b'X', b'B', b'2', b'4');
+pub(crate) const DRM_FORMAT_RGBX8888: u32 = fourcc(b'R', b'X', b'2', b'4');
+pub(crate) const DRM_FORMAT_BGRX8888: u32 = fourcc(b'B', b'X', b'2', b'4');
+pub(crate) const DRM_FORMAT_NV12: u32 = fourcc(b'N', b'V', b'1', b'2');
+pub(crate) const DRM_FORMAT_NV16: u32 = fourcc(b'N', b'V', b'1', b'6');
+pub(crate) const DRM_FORMAT_P010: u32 = fourcc(b'P', b'0', b'1', b'0');
 
 fn drm_format_name(format: u32) -> Option<&'static str> {
     match format {
@@ -311,6 +313,41 @@ fn js_convert_dmabuf_to_rgba(mut cx: FunctionContext) -> JsResult<JsBuffer> {
     Ok(buffer)
 }
 
+fn js_convert_dmabuf_to_texture(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let fd = arg_u32(&mut cx, 0, "fd")? as i32;
+    let offset = arg_u64(&mut cx, 1, "offset")?;
+    let stride = arg_u32(&mut cx, 2, "stride")?;
+    let width = arg_u32(&mut cx, 3, "width")?;
+    let height = arg_u32(&mut cx, 4, "height")?;
+    let format = arg_u32(&mut cx, 5, "format")?;
+
+    if width == 0 || height == 0 {
+        return cx.throw_error("width and height must be greater than zero");
+    }
+
+    let converted = match gpu::convert(fd, offset, stride, width, height, format) {
+        Ok(Some(converted)) => converted,
+        Ok(None) => return Ok(cx.null().upcast()),
+        Err(error) => {
+            eprintln!("myde-drm: GPU conversion failed: {error}");
+            return Ok(cx.null().upcast());
+        }
+    };
+
+    let object = cx.empty_object();
+    let fd = cx.number(converted.fd);
+    let offset = cx.number(converted.offset);
+    let stride = cx.number(converted.stride);
+    let size = cx.number(converted.size as f64);
+    let modifier = cx.string(converted.modifier.to_string());
+    object.set(&mut cx, "fd", fd)?;
+    object.set(&mut cx, "offset", offset)?;
+    object.set(&mut cx, "stride", stride)?;
+    object.set(&mut cx, "size", size)?;
+    object.set(&mut cx, "modifier", modifier)?;
+    Ok(object.upcast())
+}
+
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("drmFormatName", js_drm_format_name)?;
@@ -318,5 +355,6 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("isSupportedFormat", js_is_supported_format)?;
     cx.export_function("needsConversion", js_needs_conversion)?;
     cx.export_function("convertDmabufToRgba", js_convert_dmabuf_to_rgba)?;
+    cx.export_function("convertDmabufToTexture", js_convert_dmabuf_to_texture)?;
     Ok(())
 }

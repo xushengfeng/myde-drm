@@ -1,9 +1,18 @@
+import { closeSync } from "node:fs";
 import { createRequire } from "node:module";
 
 // In the CJS build `__filename` exists; in the ESM build fall back to
 // `import.meta.url`. Avoid Vite's browser-oriented `import.meta.url` shim,
 // which resolves relative to the renderer HTML when `document` exists.
 const require = createRequire(typeof __filename === "string" ? __filename : import.meta.url);
+
+interface NativeTexture {
+    fd: number;
+    offset: number;
+    stride: number;
+    size: number;
+    modifier: string;
+}
 
 interface NativeModule {
     drmFormatName(format: number): string | null;
@@ -18,6 +27,14 @@ interface NativeModule {
         height: number,
         format: number,
     ): Buffer;
+    convertDmabufToTexture(
+        fd: number,
+        offset: number,
+        stride: number,
+        width: number,
+        height: number,
+        format: number,
+    ): NativeTexture | null;
 }
 
 const native = require("../index.node") as NativeModule;
@@ -120,6 +137,30 @@ export function needsConversion(format: number): boolean {
 }
 
 /**
+ * A dmabuf produced by the GPU converter.
+ *
+ * `pixelFormat` is what to pass to Electron's `importSharedTexture`. Call
+ * `close()` after the import has duplicated the fd.
+ */
+export interface ConvertedDmabufTexture {
+    pixelFormat: "bgra";
+    width: number;
+    height: number;
+    modifier: bigint;
+    planes: DmabufPlane[];
+    close(): void;
+}
+
+interface ValidatedDmabuf {
+    width: number;
+    height: number;
+    format: number;
+    modifier: bigint;
+    plane: DmabufPlane;
+    offset: number;
+}
+
+/**
  * Read a LINEAR 32-bit DRM dma-buf and return tightly packed RGBA pixels.
  *
  * The returned Buffer has `width * height * 4` bytes, ready for
@@ -132,6 +173,49 @@ export function needsConversion(format: number): boolean {
  *         stride/offset are invalid, or mmap fails.
  */
 export function convertDmabufToRgba(options: ConvertDmabufToRgbaOptions): Buffer {
+    const { width, height, format, plane, offset } = validateDmabuf(options);
+    return native.convertDmabufToRgba(plane.fd, offset, plane.stride, width, height, format);
+}
+
+/**
+ * Convert a LINEAR 32-bit DRM dma-buf into a new ARGB8888 dmabuf on the GPU.
+ *
+ * The result can be passed to Electron's `importSharedTexture` with
+ * `pixelFormat: "bgra"`, keeping the GPU path instead of reading pixels back
+ * to the CPU. Call `close()` once the import has duplicated the fd.
+ *
+ * Returns `null` when the GPU path is unavailable (no DRM render node, EGL
+ * initialization failed, or the driver cannot import this dma-buf). Fall back
+ * to `convertDmabufToRgba` in that case.
+ */
+export function convertDmabufToTexture(options: ConvertDmabufToRgbaOptions): ConvertedDmabufTexture | null {
+    const { width, height, format, plane, offset } = validateDmabuf(options);
+    const result = native.convertDmabufToTexture(plane.fd, offset, plane.stride, width, height, format);
+    if (result === null) return null;
+
+    let closed = false;
+    return {
+        pixelFormat: "bgra",
+        width,
+        height,
+        modifier: BigInt(result.modifier),
+        planes: [
+            {
+                fd: result.fd,
+                offset: result.offset,
+                stride: result.stride,
+                size: result.size,
+            },
+        ],
+        close() {
+            if (closed) return;
+            closed = true;
+            closeSync(result.fd);
+        },
+    };
+}
+
+function validateDmabuf(options: ConvertDmabufToRgbaOptions): ValidatedDmabuf {
     const { width, height, format, planes } = options;
     assertPositiveInt(width, "width");
     assertPositiveInt(height, "height");
@@ -154,7 +238,7 @@ export function convertDmabufToRgba(options: ConvertDmabufToRgbaOptions): Buffer
         throw new Error("planes[0].offset must be a non-negative safe integer");
     }
 
-    return native.convertDmabufToRgba(plane.fd, offset, plane.stride, width, height, format);
+    return { width, height, format, modifier, plane, offset };
 }
 
 function assertPositiveInt(value: number, name: string, allowZero = false): void {
