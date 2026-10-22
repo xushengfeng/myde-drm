@@ -1,0 +1,64 @@
+{
+    "name": "myde-drm",
+    "version": "0.1.0",
+    "description": "Convert DRM dma-buf pixel formats (XRGB, XBGR, RGBX, BGRX, ...) to RGBA for Node.js",
+    "type": "module",
+    "packageManager": "pnpm@12.14.0",
+    "os": [
+        "linux"
+    ],
+    "engines": {
+        "node": ">=20"
+    },
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs"
+        }
+    },
+    "files": [
+        "dist",
+        "index.node",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "pnpm build:native && pnpm build:ts",
+        "build:native": "cargo build --release && cp target/release/libmyde_drm.so index.node",
+        "build:ts": "vite build",
+        "prepublishOnly": "pnpm build",
+        "dev": "vite build --watch",
+        "test": "pnpm build:native && vitest run",
+        "typecheck": "tsc --noEmit",
+        "lint": "biome check .",
+        "lint:fix": "biome check --write .",
+        "format": "biome format --write ."
+    },
+    "keywords": [
+        "drm",
+        "dma-buf",
+        "wayland",
+        "pixel-format",
+        "rgba",
+        "electron"
+    ],
+    "author": {
+        "name": "xsf",
+        "email": "xushengfeng_zg@163.com"
+    },
+    "repository": {
+        "url": "https://github.com/xushengfeng/myde-drm"
+    },
+    "license": "AGPL-3.0-only",
+    "devDependencies": {
+        "@biomejs/biome": "^2.6.2",
+        "@types/node": "^24.12.0",
+        "typescript": "^5.9.3",
+        "vite": "^7.1.7",
+        "vite-plugin-dts": "^4.3.0",
+        "vitest": "^4.1.0"
+    }
+}
