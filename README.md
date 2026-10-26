@@ -19,7 +19,9 @@ cargo test        # 包含一个真实 GBM/EGL 的 GPU 冒烟测试（无 DRM �
 pnpm typecheck
 ```
 
-构建产物：`index.node`（Rust 原生模块）、`dist/index.js`、`dist/index.cjs`、`dist/index.d.ts`。
+构建产物：`prebuilds/<platform>-<arch>/index.node`（Rust 原生模块，按 CPU 架构分目录）、`dist/index.js`、`dist/index.cjs`、`dist/index.d.ts`。
+
+同一个 npm 包会包含 x64 与 arm64 的预编译模块，运行时按 `process.arch` 自动选择。
 
 ## 用法
 

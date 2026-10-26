@@ -1,10 +1,15 @@
-import { closeSync } from "node:fs";
+import { closeSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // In the CJS build `__filename` exists; in the ESM build fall back to
 // `import.meta.url`. Avoid Vite's browser-oriented `import.meta.url` shim,
 // which resolves relative to the renderer HTML when `document` exists.
 const require = createRequire(typeof __filename === "string" ? __filename : import.meta.url);
+
+const packageRoot =
+    typeof __dirname === "string" ? join(__dirname, "..") : dirname(dirname(fileURLToPath(import.meta.url)));
 
 interface NativeTexture {
     fd: number;
@@ -37,7 +42,17 @@ interface NativeModule {
     ): NativeTexture | null;
 }
 
-const native = require("../index.node") as NativeModule;
+function loadNative(): NativeModule {
+    const prebuilt = join(packageRoot, "prebuilds", `${process.platform}-${process.arch}`, "index.node");
+    const legacy = join(packageRoot, "index.node");
+
+    if (existsSync(prebuilt)) return require(prebuilt) as NativeModule;
+    if (existsSync(legacy)) return require(legacy) as NativeModule;
+
+    throw new Error(`myde-drm: 没有 ${process.platform}-${process.arch} 的原生模块，请先运行 pnpm build:native`);
+}
+
+const native = loadNative();
 
 /** DRM fourcc values, as used by linux-dmabuf. */
 export const DRM_FORMAT = {

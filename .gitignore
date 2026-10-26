@@ -1,6 +1,7 @@
 node_modules/
 dist/
 index.node
+prebuilds/
 target/
 
 *.log

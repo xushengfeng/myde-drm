@@ -22,14 +22,14 @@
     },
     "files": [
         "dist",
-        "index.node",
+        "prebuilds",
         "README.md"
     ],
     "scripts": {
         "build": "pnpm build:native && pnpm build:ts",
-        "build:native": "cargo build --release && cp target/release/libmyde_drm.so index.node",
+        "build:native": "cargo build --release && node script/copy-native.mjs",
         "build:ts": "vite build",
-        "prepublishOnly": "pnpm build",
+        "prepublishOnly": "pnpm build:ts",
         "dev": "vite build --watch",
         "test": "pnpm build:native && vitest run",
         "typecheck": "tsc --noEmit",
